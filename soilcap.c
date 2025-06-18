@@ -1,9 +1,28 @@
 #include <furi.h>
 #include <furi_hal.h>
+#include <gui/gui.h>
+#include <gui/view_port.h>
+#include <gui/view.h>
+#include <furi_hal_adc.h>
 
 #define TAG "soil"
 
-/** entrypoint */
+typedef struct {
+    uint16_t adc_value;
+} SoilAppState;
+
+void soilcap_draw_callback(Canvas* canvas, void* context) {
+    SoilAppState* state = (SoilAppState*)context;
+
+    canvas_clear(canvas);
+    canvas_set_color(canvas, ColorBlack);
+
+    canvas_set_font(canvas, FontPrimary);
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "ADC: %u", state->adc_value);
+    canvas_draw_str_aligned(canvas, 64, 32, AlignCenter, AlignCenter, buffer);
+}
+
 int32_t soilcap_app(void* p) {
     UNUSED(p);
 
@@ -17,12 +36,22 @@ int32_t soilcap_app(void* p) {
 
     furi_hal_gpio_init(&gpio_ext_pa7, GpioModeAnalog, GpioPullNo, GpioSpeedVeryHigh);
 
+    Gui* gui = furi_record_open("gui");
+    ViewPort* view_port = view_port_alloc();
+    SoilAppState state = {.adc_value = 0};
+    view_port_draw_callback_set(view_port, soilcap_draw_callback, &state);
+    gui_add_view_port(gui, view_port, GuiLayerFullscreen);
+
     for(int i = 0; i < 60; i++) {
-        uint16_t adc_value = furi_hal_adc_read(adc_handle, FuriHalAdcChannel12);
-        float millivolts = furi_hal_adc_convert_to_voltage(adc_handle, adc_value);
-        FURI_LOG_D(TAG, "ADC value: %d Voltage: %f mV", adc_value, (double)millivolts);
+        state.adc_value = furi_hal_adc_read(adc_handle, FuriHalAdcChannel12);
+
+        view_port_update(view_port); // Refresh screen
         furi_delay_ms(1000);
     }
+
+    gui_remove_view_port(gui, view_port);
+    view_port_free(view_port);
+    furi_record_close("gui");
 
     furi_hal_adc_release(adc_handle);
 
