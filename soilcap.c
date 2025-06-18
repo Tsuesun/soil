@@ -3,12 +3,14 @@
 #include <gui/gui.h>
 #include <gui/view_port.h>
 #include <gui/view.h>
+#include <input/input.h>
 #include <furi_hal_adc.h>
 
 #define TAG "soil"
 
 typedef struct {
     uint16_t adc_value;
+    bool running;
 } SoilAppState;
 
 void soilcap_draw_callback(Canvas* canvas, void* context) {
@@ -21,6 +23,14 @@ void soilcap_draw_callback(Canvas* canvas, void* context) {
     char buffer[32];
     snprintf(buffer, sizeof(buffer), "ADC: %u", state->adc_value);
     canvas_draw_str_aligned(canvas, 64, 32, AlignCenter, AlignCenter, buffer);
+}
+
+void soilcap_input_callback(InputEvent* event, void* context) {
+    SoilAppState* state = context;
+
+    if(event->type == InputTypeShort && event->key == InputKeyBack) {
+        state->running = false;
+    }
 }
 
 int32_t soilcap_app(void* p) {
@@ -38,14 +48,14 @@ int32_t soilcap_app(void* p) {
 
     Gui* gui = furi_record_open("gui");
     ViewPort* view_port = view_port_alloc();
-    SoilAppState state = {.adc_value = 0};
+    SoilAppState state = {.adc_value = 0, .running = true};
     view_port_draw_callback_set(view_port, soilcap_draw_callback, &state);
+    view_port_input_callback_set(view_port, soilcap_input_callback, &state);
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
 
-    for(int i = 0; i < 60; i++) {
+    while(state.running) {
         state.adc_value = furi_hal_adc_read(adc_handle, FuriHalAdcChannel12);
-
-        view_port_update(view_port); // Refresh screen
+        view_port_update(view_port);
         furi_delay_ms(1000);
     }
 
